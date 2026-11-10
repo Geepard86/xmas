@@ -111,7 +111,7 @@ function burst() {
 function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }; }
 function home() {
   const now = new Date(), today = (now.getFullYear() === YEAR && now.getMonth() === 11) ? now.getDate() : 0;
-  const r = rng(now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate());
+  const r = Math.random;
   const order = DATA.days.slice().map(x => [r(), x]).sort((p, q) => p[0] - q[0]).map(x => x[1]);
   const doors = order.map((day, idx) => {
     const d = day.day, o = isOpen(d), sv = d < 24 ? isSolved(d) : !!(S.answers[24] || []).length;
@@ -246,7 +246,7 @@ function endingCard(d, r, i) {
 const magicAt = d => 8 + 4 * d;
 
 const TRACK = { h: 'M0,50 H100', v: 'M50,0 V100', ne: 'M50,0 Q50,50 100,50', nw: 'M50,0 Q50,50 0,50', se: 'M100,50 Q50,50 50,100', sw: 'M0,50 Q50,50 50,100' };
-const KOPPEL_COL = ['', 'rgba(192,57,43,.30)', 'rgba(35,87,198,.28)', 'rgba(31,140,80,.30)', 'rgba(233,170,40,.38)'];
+const KOPPEL_COL = { '': '', '#c0392b': 'rgba(192,57,43,.32)', '#1f4d3a': 'rgba(31,140,80,.32)', '#2357c6': 'rgba(35,87,198,.30)', '#2b2622': 'rgba(43,38,34,.25)' };
 function cellHTML(type, v) {
   if (!v) return '';
   if (type === 'track') return v === 'x' ? '<b class="cx">✗</b>' : `<svg viewBox="0 0 100 100"><path d="${TRACK[v]}" stroke="#2357c6" stroke-width="16" fill="none" stroke-linecap="round"/><path d="${TRACK[v]}" stroke="#fff" stroke-width="4" fill="none" stroke-dasharray="6 10"/></svg>`;
@@ -287,7 +287,7 @@ function buildGrid(layer, grid, k) {
     for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) {
       const id = bi + '.' + r + '.' + c, w = (b.x1 - b.x0) / b.cols, hh = (b.y1 - b.y0) / b.rows;
       const v = st[id] || '';
-      let bg = grid.type === 'color' ? KOPPEL_COL[+v || 0] : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : '';
+      let bg = grid.type === 'color' ? (KOPPEL_COL[v] || '') : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : '';
       if (grid.type === 'ws') { const f = (st.found || []).find(x => x.cells.some(([rr, cc]) => rr === r && cc === c)); bg = f ? WS_COL[f.cat] : ''; }
       h += `<div class="cell" data-id="${id}" style="left:${(b.x0 + c * w) * 100}%;top:${(b.y0 + r * hh) * 100}%;width:${w * 100}%;height:${hh * 100}%;${bg ? 'background:' + bg : ''}">${cellHTML(grid.type, v)}</div>`;
     }
@@ -296,24 +296,29 @@ function buildGrid(layer, grid, k) {
   if (grid.type === 'num') sudokuDups(layer, st);
   if (grid.type === 'ws') renderWsList(layer, grid, st);
   const fit = () => { const c = layer.querySelector('.cell'); if (c) layer.style.setProperty('--ch', c.getBoundingClientRect().height + 'px'); };
-  new ResizeObserver(fit).observe(layer); fit();
+  if (!layer._ro) { layer._ro = new ResizeObserver(fit); layer._ro.observe(layer); } fit();
   layer.onclick = e => {
     const cell = e.target.closest('.cell'); if (!cell || !layer.parentElement.classList.contains('gridmode')) return;
     const id = cell.dataset.id, cur = st[id] || '';
     const set = v => { if (v) st[id] = v; else delete st[id]; save();
       cell.innerHTML = cellHTML(grid.type, v);
-      cell.style.background = grid.type === 'color' ? KOPPEL_COL[+v || 0] : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : ''; };
+      cell.style.background = grid.type === 'color' ? (KOPPEL_COL[v] || '') : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : ''; };
     if (grid.type === 'ws') {
       const [, r, c] = id.split('.').map(Number);
-      if (!layer._sel) { layer._sel = [r, c]; cell.classList.add('sel'); return; }
-      const hit = wsWord(grid, layer._sel, [r, c]); layer.querySelectorAll('.sel').forEach(x => x.classList.remove('sel')); layer._sel = null;
-      if (!hit) { toast('Kein Wort aus der Liste – versuch es noch einmal.'); return; }
-      st.found = (st.found || []).filter(f => f.word !== hit.word).concat([hit]); save(); buildGrid(layer, grid, k);
-      toast('Gefunden: ' + hit.word); return;
+      const clear = () => layer.querySelectorAll('.sel').forEach(x => x.classList.remove('sel'));
+      const s0 = layer._sel;
+      if (!s0 || (s0[0] === r && s0[1] === c)) { clear(); if (s0) { layer._sel = null; return; } layer._sel = [r, c]; cell.classList.add('sel'); return; }
+      const dr = r - s0[0], dc = c - s0[1];
+      if (!(dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc))) { clear(); layer._sel = [r, c]; cell.classList.add('sel'); return; }
+      const n = Math.max(Math.abs(dr), Math.abs(dc)), sr = Math.sign(dr), sc = Math.sign(dc);
+      clear(); for (let i = 0; i <= n; i++) { const el = layer.querySelector(`[data-id="0.${s0[0] + sr * i}.${s0[1] + sc * i}"]`); el && el.classList.add('sel'); }
+      const hit = wsWord(grid, s0, [r, c]);
+      if (hit) { layer._sel = null; st.found = (st.found || []).filter(f => f.word !== hit.word).concat([hit]); save(); buildGrid(layer, grid, k); toast('Gefunden: ' + hit.word); }
+      return;
     }
     if (grid.type === 'mark') set({ '': '✗', '✗': '✓', '✓': '' }[cur]);
     else if (grid.type === 'path') set({ '': '●', '●': '✗', '✗': '' }[cur]);
-    else if (grid.type === 'color') set(String(((+cur || 0) + 1) % 5) === '0' ? '' : String((+cur || 0) + 1));
+    else if (grid.type === 'color') { const c = layer._color || '#c0392b'; set(cur === c ? '' : c); }
     else if (grid.type === 'hl') set(cur ? '' : '1');
     else if (grid.type === 'num') picker('Zahl eintragen', [...'123456789'].map(n => [n, n]).concat([['', 'leer']]), v => { set(v); sudokuDups(layer, st); });
     else if (grid.type === 'pick') picker('Wer steht hier?', grid.options.map(o => [o, esc(o)]).concat([['', 'leer']]), set);
@@ -324,7 +329,7 @@ function renderWsList(layer, grid, st) {
   const box = layer.closest('.paper, .stage') && document.getElementById('wsl-' + layer.dataset.k); if (!box) return;
   const found = new Set((st.found || []).map(f => f.word));
   box.innerHTML = Object.entries(grid.cats).map(([cat, ws]) => `<div class="wsrow"><b>${esc(cat)}:</b> ${ws.map(w => `<span class="wsw ${found.has(w) ? 'done' : ''}" style="${found.has(w) ? '--wc:' + WS_COL[cat] : ''}">${esc(w)}</span>`).join(' ')}</div>`).join('')
-    + `<div class="small">Tippe den ersten und den letzten Buchstaben eines Wortes an. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
+    + `<div class="small">Tippe den ersten Buchstaben an und dann weitere bis zum letzten – das Wort wird erkannt, sobald es vollständig markiert ist. Nochmal auf den ersten tippen hebt die Auswahl auf. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
 }
 const svgP = t => `<svg viewBox="0 0 100 100" width="44" height="44"><rect width="100" height="100" fill="#faf7f0" stroke="#cdc6b9"/><path d="${TRACK[t]}" stroke="#2357c6" stroke-width="14" fill="none" stroke-linecap="round"/></svg>`;
 function wirePuzzle(card, d) {
@@ -333,7 +338,7 @@ function wirePuzzle(card, d) {
   const inner = stage.querySelector('.pz-inner'), img = inner.querySelector('img'), cv = inner.querySelector('canvas'), ctx = cv.getContext('2d');
   const layer = inner.querySelector('.gridlayer');
   let tool = step && step.grid ? 'grid' : 'hand', color = '#c0392b', drawing = false, last = null, hist = [], zoom = 1;
-  if (layer) { buildGrid(layer, step.grid, k); inner.classList.add('gridmode'); }
+  if (layer) { layer._color = color; buildGrid(layer, step.grid, k); inner.classList.add('gridmode'); }
   const cl = inner.querySelector('.countlayer');
   const drawCount = () => { const pts = (S.grid[k] || {}).pts || []; cl.innerHTML = pts.map((p, i) => `<span class="step" style="left:${p[0] * 100}%;top:${p[1] * 100}%">${i + 1}</span>`).join('');
     stage.querySelectorAll('.cnt').forEach(x => x.textContent = pts.length); };
@@ -391,7 +396,7 @@ function wirePuzzle(card, d) {
   stage.querySelector('[data-notes]').onclick = () => { fsn.hidden = !fsn.hidden; if (!fsn.hidden) { fta.value = cta.value; fta.focus(); } };
   fta.oninput = () => { cta.value = fta.value; S.notes[k] = fta.value; clearTimeout(fta._t); fta._t = setTimeout(save, 400); };
   stage._close = closeFS;
-  card.querySelectorAll('.sw').forEach(b => b.onclick = () => { color = b.dataset.c; card.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); if (['hand', 'erase', 'grid'].includes(tool)) setTool('pen'); });
+  card.querySelectorAll('.sw').forEach(b => b.onclick = () => { color = b.dataset.c; if (layer) layer._color = color; card.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); });
   const ta = card.querySelector('.notes'); ta.oninput = () => { S.notes[k] = ta.value; clearTimeout(ta._t); ta._t = setTimeout(save, 400); };
   card.querySelectorAll('[data-tip]').forEach(b => b.onclick = () => {
     const i = +b.dataset.tip; if ((S.tips[k] || 0) > i) return;
@@ -449,8 +454,8 @@ async function suspects() {
       <p class="center small">Noch nicht abgehakt: <b>${left}</b> von 100 · Tippe eine Person an, um sie abzuhaken.</p>
       ${hints.length ? `<details open><summary><b>Deine Hinweise (${hints.length})</b></summary><ol class="hints">${hints.map(h => { const [x, y] = counts[h[0]];
         return `<li value="${h[0]}">${esc(h[1].replace('➜ ', ''))} <span class="hc ${x >= y ? 'ok' : ''}">${x >= y ? '✓ erledigt' : `${x} von ${y} abgehakt`}</span></li>`; }).join('')}</ol></details>` : '<p class="small center">Hinweise erhältst du mit jedem gelösten Rätsel.</p>'}
-      <div class="filters">${['alle', 'offen', 'abgehakt'].map(f => `<button class="tool ${SF.status === f ? 'on' : ''}" data-f="${f}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>
-      <div class="selects">${sel('art', 'Art')}${sel('gebiet', 'Wohngebiet')}${sel('schal', 'Schal')}${sel('geb', 'Gebäck')}${sel('lied', 'Lied')}
+      <div class="filters"><button class="tool ${['art', 'gebiet', 'schal', 'geb', 'lied', 'q'].some(f => SF[f]) ? 'on' : ''}" id="fToggle">⚲ Filter</button>${['alle', 'offen', 'abgehakt'].map(f => `<button class="tool ${SF.status === f ? 'on' : ''}" data-f="${f}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>
+      <div class="selects" ${SF.open ? '' : 'hidden'}>${sel('art', 'Art')}${sel('gebiet', 'Wohngebiet')}${sel('schal', 'Schal')}${sel('geb', 'Gebäck')}${sel('lied', 'Lied')}
         <input type="search" data-sf="q" placeholder="Name suchen" value="${esc(SF.q)}"></div>
       <p class="small">${list.length} Treffer${list.length ? ' · <button class="linkbtn" id="markAll">alle Treffer abhaken</button>' : ''}</p>
       <div class="sus">${list.map(s => `<div class="s ${S.sus[s.nr] ? 'off' : ''}" data-nr="${s.nr}"><span class="ck">${S.sus[s.nr] ? '✓' : ''}</span><span class="nr">${s.nr}</span>
@@ -458,6 +463,7 @@ async function suspects() {
     </article><div class="center"><button class="btn ghost" onclick="location.hash='#'">Zum Kalender</button></div>`,
   () => {
     view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { SF.status = b.dataset.f; suspects(); });
+    $('#fToggle').onclick = () => { SF.open = !SF.open; suspects(); };
     view.querySelectorAll('select[data-sf]').forEach(s => s.onchange = () => { SF[s.dataset.sf] = s.value; suspects(); });
     const q = view.querySelector('input[data-sf]'); q.onchange = () => { SF.q = q.value; suspects(); };
     const ma = $('#markAll'); if (ma) ma.onclick = () => { if (!confirm(list.length + ' Personen abhaken?')) return; list.forEach(p => S.sus[p.nr] = true); save(); suspects(); };
@@ -528,6 +534,21 @@ function route() {
   if (h === 'finale') return finale();
   home();
 }
+function coverIntro(done) {
+  const o = document.createElement('div'); o.className = 'cover-intro';
+  o.innerHTML = '<div class="ci-img"></div><div class="ci-text">Ein persönlicher Rätsel-Adventskalender für ' + DEDICATION + '</div><button class="ci-skip">Überspringen</button>';
+  document.body.appendChild(o);
+  const img = o.querySelector('.ci-img');
+  let n = 0; const iv = setInterval(() => {
+    for (let i = 0; i < 3; i++) { const p = document.createElement('span'); p.className = 'ci-light';
+      p.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px'); p.style.setProperty('--sw', (Math.random() * 60 - 30) + 'px');
+      p.style.background = ['#ffe58a', '#ff9b7a', '#9ff0c8', '#ffd54a'][Math.floor(Math.random() * 4)];
+      p.style.animationDuration = (2 + Math.random() * 1.4) + 's'; img.appendChild(p); setTimeout(() => p.remove(), 3600); }
+    if (++n > 22) clearInterval(iv);
+  }, 110);
+  const end = () => { clearInterval(iv); o.classList.add('out'); setTimeout(() => { o.remove(); done(); }, 900); };
+  o.querySelector('.ci-skip').onclick = end; setTimeout(end, 4200);
+}
 function firstVisit() {
   modal(`<h3>Willkommen am Nordpol</h3><p>Dies ist ein persönlicher Rätsel-Adventskalender für <b>${DEDICATION}</b>.</p>
     <p>Wer rätselt hier? Dein Name wird in allen Geschichten verwendet.</p><input id="fvName" value="${esc(S.name || DEDICATION)}" maxlength="24">
@@ -552,9 +573,10 @@ window.addEventListener('hashchange', route);
 /* ---------------- Start ---------------- */
 (async () => {
   await load();
+  const startApp = () => route();
   try { DATA = await (await fetch('data/kalender.json', { cache: 'no-cache' })).json(); }
   catch (e) { view.innerHTML = '<p class="light">Die Daten konnten nicht geladen werden. Bitte die Seite über einen Webserver öffnen.</p>'; return; }
   if (!window.crypto || !crypto.subtle) { view.innerHTML = '<p class="light">Dieser Browser unterstützt die Verschlüsselung nicht. Bitte die Seite über https öffnen.</p>'; return; }
-  route();
+  if (!S.coverSeen && !location.hash) { coverIntro(() => { S.coverSeen = true; save(); route(); }); } else route();
 })();
 })();
