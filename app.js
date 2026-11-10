@@ -109,7 +109,7 @@ function burst() {
 
 /* ---------------- Startseite ---------------- */
 function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }; }
-function home() {
+function home(fromSky) {
   const now = new Date(), today = (now.getFullYear() === YEAR && now.getMonth() === 11) ? now.getDate() : 0;
   const r = Math.random;
   const order = DATA.days.slice().map(x => [r(), x]).sort((p, q) => p[0] - q[0]).map(x => x[1]);
@@ -131,7 +131,7 @@ function home() {
     </section>
     <div class="baro"><div class="baro-label"><span>Weihnachtsmagie</span><span>${magic()} %</span></div>
       <div class="baro-track"><div class="baro-fill" id="baroFill"></div></div></div>
-    <div class="doors swirl">${doors}</div>
+    <div class="doors swirl ${fromSky ? 'fromsky' : ''}">${doors}</div>
     <div class="home-actions">
       <button class="btn" id="hIntro">Santas Brief &amp; Anleitung</button>
       <button class="btn" id="hSus">Verdächtige (${100 - Object.values(S.sus).filter(Boolean).length})</button>
@@ -305,15 +305,39 @@ function buildGrid(layer, grid, k) {
       cell.style.background = grid.type === 'color' ? (KOPPEL_COL[v] || '') : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : ''; };
     if (grid.type === 'ws') {
       const [, r, c] = id.split('.').map(Number);
-      const clear = () => layer.querySelectorAll('.sel').forEach(x => x.classList.remove('sel'));
-      const s0 = layer._sel;
-      if (!s0 || (s0[0] === r && s0[1] === c)) { clear(); if (s0) { layer._sel = null; return; } layer._sel = [r, c]; cell.classList.add('sel'); return; }
-      const dr = r - s0[0], dc = c - s0[1];
-      if (!(dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc))) { clear(); layer._sel = [r, c]; cell.classList.add('sel'); return; }
-      const n = Math.max(Math.abs(dr), Math.abs(dc)), sr = Math.sign(dr), sc = Math.sign(dc);
-      clear(); for (let i = 0; i <= n; i++) { const el = layer.querySelector(`[data-id="0.${s0[0] + sr * i}.${s0[1] + sc * i}"]`); el && el.classList.add('sel'); }
-      const hit = wsWord(grid, s0, [r, c]);
-      if (hit) { layer._sel = null; st.found = (st.found || []).filter(f => f.word !== hit.word).concat([hit]); save(); buildGrid(layer, grid, k); toast('Gefunden: ' + hit.word); }
+      const words = Object.values(grid.cats).flat();
+      const L = (rr, cc) => [...grid.letters[rr]][cc];
+      const paint = () => { layer.querySelectorAll('.sel').forEach(x => x.classList.remove('sel'));
+        (layer._sel || []).forEach(([rr, cc]) => { const el = layer.querySelector(`[data-id="0.${rr}.${cc}"]`); el && el.classList.add('sel'); }); };
+      const fail = () => { layer._sel = null; paint(); toast('Kein Wort aus der Liste – versuch es noch einmal.'); };
+      const sel = layer._sel || [];
+      // gefundenes Wort antippen (ohne laufende Auswahl) = Markierung entfernen
+      const foundHere = (st.found || []).find(f => f.cells.some(([rr, cc]) => rr === r && cc === c));
+      if (!sel.length && foundHere) { st.found = st.found.filter(f => f !== foundHere); save(); buildGrid(layer, grid, k); toast('Markierung von ' + foundHere.word + ' entfernt'); return; }
+      // letzten markierten Buchstaben erneut antippen = zurücknehmen
+      if (sel.length && sel[sel.length - 1][0] === r && sel[sel.length - 1][1] === c) { sel.pop(); layer._sel = sel.length ? sel : null; paint(); return; }
+      let next;
+      if (!sel.length) next = [[r, c]];
+      else {
+        const [r0, c0] = sel[0], [rl, cl] = sel[sel.length - 1];
+        const dr = r - rl, dc = c - cl;
+        if (sel.length === 1 && Math.max(Math.abs(dr), Math.abs(dc)) === 1) next = sel.concat([[r, c]]);
+        else if (sel.length > 1 && dr === sel[1][0] - r0 && dc === sel[1][1] - c0) next = sel.concat([[r, c]]);
+        else {   // Sprung direkt zum letzten Buchstaben eines Wortes
+          const hit = sel.length === 1 ? wsWord(grid, sel[0], [r, c]) : null;
+          if (hit) { layer._sel = null; st.found = (st.found || []).filter(f => f.word !== hit.word).concat([hit]); save(); buildGrid(layer, grid, k); toast('Gefunden: ' + hit.word); return; }
+          return fail();
+        }
+      }
+      const w = next.map(([rr, cc]) => L(rr, cc)).join('');
+      const ok = words.some(x => x.startsWith(w) || [...x].reverse().join('').startsWith(w));
+      if (!ok) return fail();
+      layer._sel = next; paint();
+      const full = words.find(x => x === w || [...x].reverse().join('') === w);
+      if (full && next.length > 1) {
+        const cat = Object.entries(grid.cats).find(([, ws]) => ws.includes(full))[0];
+        layer._sel = null; st.found = (st.found || []).filter(f => f.word !== full).concat([{ word: full, cat, cells: next }]); save(); buildGrid(layer, grid, k); toast('Gefunden: ' + full);
+      }
       return;
     }
     if (grid.type === 'mark') set({ '': '✗', '✗': '✓', '✓': '' }[cur]);
@@ -327,9 +351,10 @@ function buildGrid(layer, grid, k) {
 }
 function renderWsList(layer, grid, st) {
   const box = layer.closest('.paper, .stage') && document.getElementById('wsl-' + layer.dataset.k); if (!box) return;
+  box.onclick = e => { const w = e.target.closest('.wsw.done'); if (!w) return; st.found = (st.found || []).filter(f => f.word !== w.textContent); save(); buildGrid(layer, grid, layer.dataset.k); };
   const found = new Set((st.found || []).map(f => f.word));
   box.innerHTML = Object.entries(grid.cats).map(([cat, ws]) => `<div class="wsrow"><b>${esc(cat)}:</b> ${ws.map(w => `<span class="wsw ${found.has(w) ? 'done' : ''}" style="${found.has(w) ? '--wc:' + WS_COL[cat] : ''}">${esc(w)}</span>`).join(' ')}</div>`).join('')
-    + `<div class="small">Tippe den ersten Buchstaben an und dann weitere bis zum letzten – das Wort wird erkannt, sobald es vollständig markiert ist. Nochmal auf den ersten tippen hebt die Auswahl auf. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
+    + `<div class="small">Gefundene Wörter lassen sich durch Antippen im Gitter oder in der Liste wieder entfernen. Markiere ein Wort Buchstabe für Buchstabe (oder tippe den ersten und gleich den letzten an). Den zuletzt markierten Buchstaben nochmal antippen nimmt ihn zurück. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
 }
 const svgP = t => `<svg viewBox="0 0 100 100" width="44" height="44"><rect width="100" height="100" fill="#faf7f0" stroke="#cdc6b9"/><path d="${TRACK[t]}" stroke="#2357c6" stroke-width="14" fill="none" stroke-linecap="round"/></svg>`;
 function wirePuzzle(card, d) {
@@ -546,16 +571,23 @@ function coverIntro(done) {
       p.style.animationDuration = (2 + Math.random() * 1.4) + 's'; img.appendChild(p); setTimeout(() => p.remove(), 3600); }
     if (++n > 22) clearInterval(iv);
   }, 110);
-  const end = () => { clearInterval(iv); o.classList.add('out'); setTimeout(() => { o.remove(); done(); }, 900); };
-  o.querySelector('.ci-skip').onclick = end; setTimeout(end, 4200);
+  let ended = false;
+  const end = fast => { if (ended) return; ended = true; clearInterval(iv);
+    if (fast) { o.classList.add('out'); setTimeout(() => { o.remove(); done(); }, 500); return; }
+    o.classList.add('up'); setTimeout(() => o.classList.add('out'), 1500); setTimeout(() => { o.remove(); done(); }, 2300); };
+  o.querySelector('.ci-skip').onclick = () => end(true); setTimeout(() => end(false), 3300);
 }
 function firstVisit() {
+  view.innerHTML = '';
   modal(`<h3>Willkommen am Nordpol</h3><p>Dies ist ein persönlicher Rätsel-Adventskalender für <b>${DEDICATION}</b>.</p>
     <p>Wer rätselt hier? Dein Name wird in allen Geschichten verwendet.</p><input id="fvName" value="${esc(S.name || DEDICATION)}" maxlength="24">
     <div class="center"><button class="btn primary" id="fvGo">Los geht’s</button></div>`, b => {
-    $('#fvGo', b).onclick = () => { S.name = $('#fvName', b).value.trim() || DEDICATION; S.introSeen = true; save(); closeModal(); location.hash = '#intro'; };
+    b.querySelector('.xclose').remove();
+    $('#fvGo', b).onclick = () => {
+      S.name = $('#fvName', b).value.trim() || DEDICATION; S.introSeen = true; save(); closeModal();
+      coverIntro(() => { S.coverSeen = true; save(); location.hash = ''; home(true); });
+    };
   });
-  home();
 }
 window.addEventListener('hashchange', route);
 
@@ -577,6 +609,6 @@ window.addEventListener('hashchange', route);
   try { DATA = await (await fetch('data/kalender.json', { cache: 'no-cache' })).json(); }
   catch (e) { view.innerHTML = '<p class="light">Die Daten konnten nicht geladen werden. Bitte die Seite über einen Webserver öffnen.</p>'; return; }
   if (!window.crypto || !crypto.subtle) { view.innerHTML = '<p class="light">Dieser Browser unterstützt die Verschlüsselung nicht. Bitte die Seite über https öffnen.</p>'; return; }
-  if (!S.coverSeen && !location.hash) { coverIntro(() => { S.coverSeen = true; save(); route(); }); } else route();
+  route();
 })();
 })();
