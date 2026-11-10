@@ -304,6 +304,7 @@ function buildGrid(layer, grid, k) {
       cell.innerHTML = cellHTML(grid.type, v);
       cell.style.background = grid.type === 'color' ? (KOPPEL_COL[v] || '') : grid.type === 'hl' && v ? 'rgba(255,214,64,.55)' : ''; };
     if (grid.type === 'ws') {
+      if (!S.wsHint) { S.wsHint = true; save(); toast('Tipp: Erster und letzter Buchstabe eines Wortes genügen.'); }
       const [, r, c] = id.split('.').map(Number);
       const words = Object.values(grid.cats).flat();
       const L = (rr, cc) => [...grid.letters[rr]][cc];
@@ -353,8 +354,8 @@ function renderWsList(layer, grid, st) {
   const box = layer.closest('.paper, .stage') && document.getElementById('wsl-' + layer.dataset.k); if (!box) return;
   box.onclick = e => { const w = e.target.closest('.wsw.done'); if (!w) return; st.found = (st.found || []).filter(f => f.word !== w.textContent); save(); buildGrid(layer, grid, layer.dataset.k); };
   const found = new Set((st.found || []).map(f => f.word));
-  box.innerHTML = Object.entries(grid.cats).map(([cat, ws]) => `<div class="wsrow"><b>${esc(cat)}:</b> ${ws.map(w => `<span class="wsw ${found.has(w) ? 'done' : ''}" style="${found.has(w) ? '--wc:' + WS_COL[cat] : ''}">${esc(w)}</span>`).join(' ')}</div>`).join('')
-    + `<div class="small">Gefundene Wörter lassen sich durch Antippen im Gitter oder in der Liste wieder entfernen. Markiere ein Wort Buchstabe für Buchstabe (oder tippe den ersten und gleich den letzten an). Den zuletzt markierten Buchstaben nochmal antippen nimmt ihn zurück. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
+  box.innerHTML = '<div class="wshint">💡 <b>Tipp:</b> Es reicht, den <b>ersten</b> und den <b>letzten</b> Buchstaben eines Wortes anzutippen.</div>' + Object.entries(grid.cats).map(([cat, ws]) => `<div class="wsrow"><b>${esc(cat)}:</b> ${ws.map(w => `<span class="wsw ${found.has(w) ? 'done' : ''}" style="${found.has(w) ? '--wc:' + WS_COL[cat] : ''}">${esc(w)}</span>`).join(' ')}</div>`).join('')
+    + `<div class="small">Gefundene Wörter lassen sich durch Antippen im Gitter oder in der Liste wieder entfernen. Du kannst ein Wort auch Buchstabe für Buchstabe markieren. Den zuletzt markierten Buchstaben nochmal antippen nimmt ihn zurück. Gefunden: ${found.size} von ${Object.values(grid.cats).flat().length}</div>`;
 }
 const svgP = t => `<svg viewBox="0 0 100 100" width="44" height="44"><rect width="100" height="100" fill="#faf7f0" stroke="#cdc6b9"/><path d="${TRACK[t]}" stroke="#2357c6" stroke-width="14" fill="none" stroke-linecap="round"/></svg>`;
 function wirePuzzle(card, d) {

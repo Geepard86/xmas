@@ -214,3 +214,14 @@ body.noscroll{overflow:hidden}
 @keyframes ciRise{0%{transform:translate(0,0) scale(.6);opacity:0}15%{opacity:1}50%{transform:translate(calc(var(--dx)*.5 + var(--sw)),-28vh) scale(1)}100%{transform:translate(var(--dx),-60vh) scale(.4);opacity:0}}
 .ci-text{position:absolute;bottom:calc(1.6rem + var(--safe-b));left:0;right:0;text-align:center;color:#f4efe3;font-style:italic;text-shadow:0 2px 8px #000;padding:0 1rem}
 .ci-skip{position:absolute;top:calc(1rem + var(--safe-t));right:1rem;border:1px solid rgba(233,196,106,.6);background:rgba(0,0,0,.35);color:var(--gold);border-radius:999px;padding:.4rem .9rem;font-family:Lora,serif}
+
+.cover-intro{overflow:hidden;background:linear-gradient(180deg,#050b1c 0%,#0d1733 60%,#081022 100%)}
+.ci-img{transition:transform 1.7s cubic-bezier(.55,0,.35,1),filter 1.7s}
+.cover-intro.up .ci-img{transform:translateY(85vh) scale(1.08);filter:brightness(.8)}
+.cover-intro.up .ci-text,.cover-intro.up .ci-skip{opacity:0;transition:opacity .6s}
+.cover-intro.out{opacity:0;transition:opacity .8s}
+.cover-intro .ci-stars{position:absolute;inset:0;background:radial-gradient(2px 2px at 20% 30%,#fff,transparent),radial-gradient(1.5px 1.5px at 70% 20%,#fff,transparent),radial-gradient(2px 2px at 40% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 85% 60%,#fff,transparent),radial-gradient(1px 1px at 10% 85%,#fff,transparent);opacity:.7}
+.doors.fromsky .door{animation:fromSky 1.3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes fromSky{0%{transform:translate(calc(var(--tx)*1.5),-75vh) rotate(var(--rot)) scale(.2);opacity:0;filter:brightness(2.2) blur(2px)}
+  60%{opacity:1;filter:brightness(1.6) blur(0)}100%{transform:none;opacity:1;filter:none}}
+.wshint{background:#fff3c4;border:1px solid #e9c46a;border-radius:10px;padding:.45rem .6rem;margin-bottom:.5rem;line-height:1.4;font-size:.9rem}
